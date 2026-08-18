@@ -1,0 +1,26 @@
+/*
+ * Almost everything is handled by Bootstrap utilities in the JSX.
+ * This file only holds the few things Bootstrap has no utility for.
+ */
+
+body {
+  background-color: #f6f7f9;
+  /* Bootstrap's own font stack, so the app matches its components. */
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Bootstrap's .btn-lg and .form-control-lg are already ~48px tall, which meets
+   the recommended minimum touch target. This just guarantees it everywhere. */
+.btn,
+.form-control,
+.form-select {
+  min-height: 44px;
+}
+
+/* Long converted amounts (e.g. 10,795.29 JPY) must not overflow a 320px
+   screen - shrink the display text a little on the smallest phones. */
+@media (max-width: 400px) {
+  .display-6 {
+    font-size: 1.75rem;
+  }
+}

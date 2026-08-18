@@ -1,0 +1,14 @@
+# Netlify configuration for the frontend.
+# "base" tells Netlify this app lives in the frontend/ subfolder of the repo.
+
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = "dist"
+
+# Serve index.html for any unknown path so a refresh (or a deep link) loads the
+# app instead of returning a 404 from Netlify's static file server.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
