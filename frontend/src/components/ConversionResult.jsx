@@ -17,9 +17,7 @@ export default function ConversionResult({ result }) {
   const variant = rateVariant(historical);
 
   return (
-    <div
-      className={`card shadow-sm border-2 border-${variant}`}
-    >
+    <div className={`card shadow-sm border-2 border-${variant}`}>
       <div className="card-body p-3 p-sm-4 text-center">
         {/* The badge is how the user tells a historical result from a live one */}
         <span className={`badge mb-2 text-bg-${variant}`}>
