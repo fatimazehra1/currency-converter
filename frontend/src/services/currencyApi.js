@@ -39,19 +39,35 @@ async function request(path) {
 
   try {
     response = await fetch(`${BASE_URL}${path}`);
-  } catch {
+  } catch (error) {
     // fetch only rejects on network-level failure: server down, no internet,
     // DNS failure. An HTTP 400 or 500 is a *successful* fetch, handled below.
     throw new Error(
       'Could not reach the server. Check that the backend is running.',
+      { cause: error },
     );
   }
 
-  // .catch(() => null) guards against an empty or non-JSON body.
-  const body = await response.json().catch(() => null);
+  let body = null;
+  let parseError = null;
+
+  try {
+    body = await response.json();
+  } catch (error) {
+    parseError = error;
+  }
 
   if (!response.ok) {
-    throw new Error(readErrorMessage(body, response.status));
+    throw new Error(readErrorMessage(body, response.status), {
+      cause: parseError,
+    });
+  }
+
+  if (parseError || body === null) {
+    throw new Error(
+      'The server returned an invalid or empty response. Please try again.',
+      { cause: parseError },
+    );
   }
 
   return body;

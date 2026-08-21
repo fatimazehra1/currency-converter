@@ -134,9 +134,10 @@ curl "http://localhost:3000/api/convert?from=USD&to=INR&amount=100"
 | Status | Meaning |
 |---|---|
 | `400` | Invalid input, unsupported currency, or out-of-range date |
-| `502` | Upstream provider failed or rejected our credentials |
+| `500` | Unexpected server error |
+| `502` | Provider unreachable, rejected credentials, or returned an invalid response |
 | `503` | Provider rate limit / monthly quota reached |
-| `504` | Provider unreachable or too slow (8s timeout) |
+| `504` | Provider request timed out or was too slow (8s timeout) |
 
 ---
 

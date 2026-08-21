@@ -17,8 +17,9 @@ function readStoredHistory() {
     if (!raw) return [];
 
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
+    return Array.isArray(parsed) ? parsed.filter(isHistoryEntry) : [];
+  } catch (error) {
+    console.warn('Could not read conversion history.', error);
     return [];
   }
 }
@@ -42,9 +43,10 @@ export function useConversionHistory() {
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-    } catch {
+    } catch (error) {
       // Storage can be full or blocked (Safari private mode). The app still
       // works perfectly in memory, so a failed save must not break it.
+      console.warn('Could not save conversion history.', error);
     }
   }, [history]);
 
@@ -72,4 +74,17 @@ export function useConversionHistory() {
   }
 
   return { history, addEntry, clearHistory };
+}
+
+function isHistoryEntry(entry) {
+  return (
+    entry !== null &&
+    typeof entry === 'object' &&
+    typeof entry.id === 'string' &&
+    typeof entry.convertedAt === 'string' &&
+    typeof entry.amount === 'number' &&
+    Number.isFinite(entry.amount) &&
+    typeof entry.convertedAmount === 'number' &&
+    Number.isFinite(entry.convertedAmount)
+  );
 }

@@ -30,9 +30,9 @@ export interface ConversionResult {
 
 /** The (larger) currency object FreeCurrencyAPI actually returns. */
 interface RawCurrency {
-  code: string;
-  name: string;
-  symbol: string;
+  code?: unknown;
+  name?: unknown;
+  symbol?: unknown;
 }
 
 interface CacheEntry {
@@ -88,9 +88,27 @@ export class CurrencyService {
     );
 
     // The provider returns an object keyed by code; the UI wants a sorted array.
-    const currencies = Object.values(response.data ?? {})
-      .map(({ code, name, symbol }) => ({ code, name, symbol }))
-      .sort((a, b) => a.code.localeCompare(b.code));
+    const rawCurrencies = Object.values(response.data ?? {});
+    const validCurrencies = rawCurrencies
+      .filter(isRawCurrency)
+      .map(({ code, name, symbol }) => ({
+        code,
+        name,
+        symbol: typeof symbol === 'string' ? symbol : '',
+      }));
+    const discardedCount = rawCurrencies.length - validCurrencies.length;
+
+    if (discardedCount > 0) {
+      this.logger.warn(
+        `Discarded ${discardedCount} malformed currency entr${
+          discardedCount === 1 ? 'y' : 'ies'
+        } from the provider response.`,
+      );
+    }
+
+    const currencies = validCurrencies.sort((a, b) =>
+      a.code.localeCompare(b.code),
+    );
 
     if (currencies.length === 0) {
       throw new BadGatewayException(
@@ -278,9 +296,18 @@ export class CurrencyService {
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     } catch (error) {
-      this.logger.error(`Network failure calling ${path}: ${String(error)}`);
-      throw new GatewayTimeoutException(
-        'Could not reach the exchange rate provider. Please try again.',
+      this.logger.error(
+        `Network failure calling ${path}: ${formatError(error)}`,
+      );
+
+      if (isTimeoutError(error)) {
+        throw new GatewayTimeoutException(
+          'Could not reach the exchange rate provider. Please try again.',
+        );
+      }
+
+      throw new BadGatewayException(
+        'Could not connect to the exchange rate provider. Please try again.',
       );
     }
 
@@ -288,7 +315,16 @@ export class CurrencyService {
       throw await this.toClientError(response, path);
     }
 
-    return (await response.json()) as T;
+    try {
+      return (await response.json()) as T;
+    } catch (error) {
+      this.logger.error(
+        `Invalid JSON from FreeCurrencyAPI ${path}: ${formatError(error)}`,
+      );
+      throw new BadGatewayException(
+        'Exchange rate provider returned an invalid response.',
+      );
+    }
   }
 
   /** Maps a provider error onto the status code our own API should return. */
@@ -364,4 +400,38 @@ function yesterdayUtc(): string {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() - 1);
   return date.toISOString().slice(0, 10);
+}
+
+function isRawCurrency(currency: unknown): currency is {
+  code: string;
+  name: string;
+  symbol?: string;
+} {
+  if (!currency || typeof currency !== 'object') {
+    return false;
+  }
+
+  const candidate = currency as RawCurrency;
+  return (
+    typeof candidate.code === 'string' &&
+    candidate.code.trim().length > 0 &&
+    typeof candidate.name === 'string' &&
+    candidate.name.trim().length > 0 &&
+    (candidate.symbol === undefined || typeof candidate.symbol === 'string')
+  );
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error
+    ? (error.stack ?? error.message)
+    : String(error);
+}
+
+function isTimeoutError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const name = (error as { name?: unknown }).name;
+  return name === 'TimeoutError' || name === 'AbortError';
 }

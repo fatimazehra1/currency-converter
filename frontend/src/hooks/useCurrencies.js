@@ -25,10 +25,22 @@ export function useCurrencies() {
 
     fetchCurrencies()
       .then((data) => {
+        if (!Array.isArray(data)) {
+          throw new Error(
+            'The server returned an invalid currency list. Please try again.',
+          );
+        }
+
         if (!cancelled) setCurrencies(data);
       })
       .catch((err) => {
-        if (!cancelled) setError(err.message);
+        if (!cancelled) {
+          setError(
+            err instanceof Error && err.message
+              ? err.message
+              : 'Could not load currencies. Please try again.',
+          );
+        }
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);

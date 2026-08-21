@@ -54,7 +54,11 @@ export default function ConverterForm({ currencies, currenciesLoading, onResult 
 
       onResult(result);
     } catch (err) {
-      setError(err.message);
+      setError(
+        err instanceof Error && err.message
+          ? err.message
+          : 'Could not complete the conversion. Please try again.',
+      );
       // Clear the old result so a stale figure is never shown beside an error.
       onResult(null);
     } finally {
