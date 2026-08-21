@@ -1,3 +1,6 @@
+import { formatAmount } from '../utils/format';
+import { rateVariant } from '../utils/rates';
+
 /**
  * Displays the most recent successful conversion.
  *
@@ -6,33 +9,18 @@
  * calculated convertedAmount, so there is exactly one rounding rule in the app.
  */
 
-/** Formats a number using the visitor's own locale (thousands separators). */
-function formatAmount(value) {
-  return value.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
 export default function ConversionResult({ result }) {
   if (!result) return null;
 
   const { from, to, amount, rate, convertedAmount, rateDate, historical } =
     result;
+  const variant = rateVariant(historical);
 
   return (
-    <div
-      className={`card shadow-sm border-2 ${
-        historical ? 'border-warning' : 'border-success'
-      }`}
-    >
+    <div className={`card shadow-sm border-2 border-${variant}`}>
       <div className="card-body p-3 p-sm-4 text-center">
         {/* The badge is how the user tells a historical result from a live one */}
-        <span
-          className={`badge mb-2 ${
-            historical ? 'text-bg-warning' : 'text-bg-success'
-          }`}
-        >
+        <span className={`badge mb-2 text-bg-${variant}`}>
           {historical ? `Historical rate - ${rateDate}` : 'Current rate'}
         </span>
 

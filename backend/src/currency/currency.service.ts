@@ -8,6 +8,8 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { formatIsoDate, todayUtc, yesterdayUtc } from '../common/date.util';
+import { roundMoney } from '../common/money.util';
 import { ConvertQueryDto } from './dto/convert-query.dto';
 
 /** What we send to the browser for the dropdowns. */
@@ -28,16 +30,14 @@ export interface ConversionResult {
   historical: boolean;
 }
 
-/** The (larger) currency object FreeCurrencyAPI actually returns. */
-interface RawCurrency {
-  code: string;
-  name: string;
-  symbol: string;
-}
-
 interface CacheEntry {
   value: unknown;
   expiresAt: number;
+}
+
+interface RateResult {
+  rate: number;
+  rateDate: string;
 }
 
 const API_BASE_URL = 'https://api.freecurrencyapi.com/v1';
@@ -83,7 +83,7 @@ export class CurrencyService {
       return cached;
     }
 
-    const response = await this.request<{ data: Record<string, RawCurrency> }>(
+    const response = await this.request<{ data: Record<string, Currency> }>(
       '/currencies',
     );
 
@@ -152,26 +152,22 @@ export class CurrencyService {
     to: string,
   ): Promise<{ rate: number; rateDate: string }> {
     const cacheKey = `latest:${from}:${to}`;
-    const cached = this.readCache<number>(cacheKey);
-    if (cached !== undefined) {
-      return { rate: cached, rateDate: todayUtc() };
-    }
-
-    // Asking for only the one currency we need keeps the response small.
-    const response = await this.request<{ data: Record<string, number> }>(
-      '/latest',
-      { base_currency: from, currencies: to },
-    );
-
-    const rate = response.data?.[to];
-    if (typeof rate !== 'number') {
-      throw new BadGatewayException(
-        `Exchange rate provider did not return a ${from} to ${to} rate.`,
+    return this.getCachedRate(cacheKey, LATEST_RATE_TTL_MS, async () => {
+      // Asking for only the one currency we need keeps the response small.
+      const response = await this.request<{ data: Record<string, number> }>(
+        '/latest',
+        { base_currency: from, currencies: to },
       );
-    }
 
-    this.writeCache(cacheKey, rate, LATEST_RATE_TTL_MS);
-    return { rate, rateDate: todayUtc() };
+      const rate = response.data?.[to];
+      if (typeof rate !== 'number') {
+        throw new BadGatewayException(
+          `Exchange rate provider did not return a ${from} to ${to} rate.`,
+        );
+      }
+
+      return { rate, rateDate: todayUtc() };
+    });
   }
 
   private async getHistoricalRate(
@@ -180,29 +176,40 @@ export class CurrencyService {
     date: string,
   ): Promise<{ rate: number; rateDate: string }> {
     const cacheKey = `historical:${date}:${from}:${to}`;
-    const cached = this.readCache<number>(cacheKey);
+    return this.getCachedRate(cacheKey, HISTORICAL_RATE_TTL_MS, async () => {
+      const response = await this.request<{
+        data: Record<string, Record<string, number>>;
+      }>('/historical', { date, base_currency: from, currencies: to });
+
+      // /historical nests rates under the date the provider actually used, which
+      // is not guaranteed to equal the date we asked for. Read the key back
+      // instead of assuming, and report that real date to the user.
+      const [returnedDate] = Object.keys(response.data ?? {});
+      const rate = returnedDate ? response.data[returnedDate]?.[to] : undefined;
+
+      if (typeof rate !== 'number') {
+        throw new BadGatewayException(
+          `Exchange rate provider did not return a ${from} to ${to} rate for ${date}.`,
+        );
+      }
+
+      return { rate, rateDate: returnedDate };
+    });
+  }
+
+  private async getCachedRate(
+    cacheKey: string,
+    ttlMs: number,
+    loader: () => Promise<RateResult>,
+  ): Promise<RateResult> {
+    const cached = this.readCache<RateResult>(cacheKey);
     if (cached !== undefined) {
-      return { rate: cached, rateDate: date };
+      return cached;
     }
 
-    const response = await this.request<{
-      data: Record<string, Record<string, number>>;
-    }>('/historical', { date, base_currency: from, currencies: to });
-
-    // /historical nests rates under the date the provider actually used, which
-    // is not guaranteed to equal the date we asked for. Read the key back
-    // instead of assuming, and report that real date to the user.
-    const [returnedDate] = Object.keys(response.data ?? {});
-    const rate = returnedDate ? response.data[returnedDate]?.[to] : undefined;
-
-    if (typeof rate !== 'number') {
-      throw new BadGatewayException(
-        `Exchange rate provider did not return a ${from} to ${to} rate for ${date}.`,
-      );
-    }
-
-    this.writeCache(cacheKey, rate, HISTORICAL_RATE_TTL_MS);
-    return { rate, rateDate: returnedDate };
+    const result = await loader();
+    this.writeCache(cacheKey, result, ttlMs);
+    return result;
   }
 
   /**
@@ -233,10 +240,7 @@ export class CurrencyService {
   private assertDateIsInAllowedRange(date: string): void {
     // The DTO regex accepts 2026-02-31; round-tripping through Date rejects it.
     const parsed = new Date(`${date}T00:00:00Z`);
-    if (
-      Number.isNaN(parsed.getTime()) ||
-      parsed.toISOString().slice(0, 10) !== date
-    ) {
+    if (Number.isNaN(parsed.getTime()) || formatIsoDate(parsed) !== date) {
       throw new BadRequestException(`${date} is not a real calendar date.`);
     }
 
@@ -347,21 +351,4 @@ export class CurrencyService {
   private writeCache(key: string, value: unknown, ttlMs: number): void {
     this.cache.set(key, { value, expiresAt: Date.now() + ttlMs });
   }
-}
-
-/** Money is displayed to 2 decimal places. */
-function roundMoney(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
-/** Today in UTC as YYYY-MM-DD. */
-function todayUtc(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-/** Yesterday in UTC as YYYY-MM-DD - the newest date /historical accepts. */
-function yesterdayUtc(): string {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() - 1);
-  return date.toISOString().slice(0, 10);
 }
