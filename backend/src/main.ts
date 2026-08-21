@@ -1,5 +1,7 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 /**
@@ -7,10 +9,28 @@ import { AppModule } from './app.module';
  * routing prefix, CORS, validation - is configured here in one place.
  */
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // Every route is served under /api, so controllers declare bare paths.
   app.setGlobalPrefix('api');
+
+  // Baseline security response headers (nosniff, no referrer leakage,
+  // HSTS, and a deny-everything CSP - this server only returns JSON).
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        useDefaults: false,
+        directives: {
+          'default-src': ["'none'"],
+          'frame-ancestors': ["'none'"],
+        },
+      },
+      crossOriginResourcePolicy: false,
+    }),
+  );
+
+  // Do not advertise the framework.
+  app.disable('x-powered-by');
 
   // A browser will refuse to read our responses unless we name the origins
   // allowed to call us. CORS_ORIGINS covers the deployed frontend, so
@@ -20,7 +40,17 @@ async function bootstrap(): Promise<void> {
     .map((origin) => origin.trim())
     .filter(Boolean);
 
-  const isProduction = process.env.NODE_ENV === 'production';
+  // Opt in explicitly: an unset or misspelled NODE_ENV must not silently widen
+  // the allowlist, so anything other than 'development' gets the strict rules.
+  const isDevelopment = process.env.NODE_ENV === 'development';
+
+  // Hosts like Render terminate TLS in front of us, so the socket address is
+  // their proxy and the real client IP is the last hop in X-Forwarded-For.
+  // Rate limiting needs that real IP, otherwise every visitor shares one
+  // bucket. Only trusted when deployed - locally the header is spoofable.
+  if (process.env.NODE_ENV === 'production') {
+    app.set('trust proxy', 1);
+  }
 
   app.enableCors({
     origin: (
@@ -33,12 +63,12 @@ async function bootstrap(): Promise<void> {
 
       if (allowedOrigins.includes(origin)) return callback(null, true);
 
-      // In development only, accept any localhost port. Vite picks the next
-      // free port (5174, 5175...) when 5173 is taken, and hard-coding one port
-      // means the app silently breaks with a confusing CORS error.
-      // Production never takes this branch - only the explicit list applies.
+      // With NODE_ENV=development only, accept any localhost port. Vite picks
+      // the next free port (5174, 5175...) when 5173 is taken, and hard-coding
+      // one port means the app silently breaks with a confusing CORS error.
+      // Anywhere else only the explicit CORS_ORIGINS list applies.
       if (
-        !isProduction &&
+        isDevelopment &&
         /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)
       ) {
         return callback(null, true);

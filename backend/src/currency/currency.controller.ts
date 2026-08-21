@@ -1,4 +1,5 @@
 import { Controller, Get, Query } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import {
   ConversionResult,
   Currency,
@@ -24,7 +25,12 @@ export class CurrencyController {
   // single shared instance it created. We never call `new CurrencyService()`.
   constructor(private readonly currencyService: CurrencyService) {}
 
-  /** GET /api/health - a cheap liveness check for hosting platforms. */
+  /**
+   * GET /api/health - a cheap liveness check for hosting platforms.
+   * Exempt from the rate limit: it costs nothing and a throttled 429 would
+   * make the host think the service is down.
+   */
+  @SkipThrottle()
   @Get('health')
   getHealth(): { status: string } {
     return { status: 'ok' };

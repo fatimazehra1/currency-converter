@@ -12,8 +12,8 @@ services:
     startCommand: npm run start:prod
     healthCheckPath: /api/health
     envVars:
-      # Required. Without this the backend allows any localhost origin
-      # (a development-only convenience) instead of only CORS_ORIGINS.
+      # Also enables trusting the platform's X-Forwarded-For header, which the
+      # per-IP rate limit needs to see the real client address.
       - key: NODE_ENV
         value: production
       # sync: false means "ask me for this value in the dashboard".
