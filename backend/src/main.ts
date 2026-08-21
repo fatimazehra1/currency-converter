@@ -1,6 +1,9 @@
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { AllExceptionsFilter } from './common/all-exceptions.filter';
+
+const bootstrapLogger = new Logger('Bootstrap');
 
 /**
  * Application entry point. Everything that applies to the whole server -
@@ -8,6 +11,7 @@ import { AppModule } from './app.module';
  */
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   // Every route is served under /api, so controllers declare bare paths.
   app.setGlobalPrefix('api');
@@ -44,6 +48,7 @@ async function bootstrap(): Promise<void> {
         return callback(null, true);
       }
 
+      bootstrapLogger.warn(`Rejected CORS origin: ${origin}`);
       return callback(new Error(`Origin ${origin} is not allowed by CORS`));
     },
   });
@@ -72,4 +77,8 @@ async function bootstrap(): Promise<void> {
   console.log(`CORS allowed origins: ${allowedOrigins.join(', ')}`);
 }
 
-void bootstrap();
+bootstrap().catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  bootstrapLogger.error(`Application failed to start: ${message}`);
+  process.exitCode = 1;
+});
