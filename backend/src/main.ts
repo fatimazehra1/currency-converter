@@ -80,5 +80,5 @@ async function bootstrap(): Promise<void> {
 bootstrap().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
   bootstrapLogger.error(`Application failed to start: ${message}`);
-  process.exitCode = 1;
+  process.exit(1);
 });

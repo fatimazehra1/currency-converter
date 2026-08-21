@@ -1,9 +1,4 @@
-import {
-  BadGatewayException,
-  BadRequestException,
-  HttpException,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { HttpException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CurrencyService } from './currency.service';
 
@@ -23,28 +18,22 @@ describe('CurrencyService error handling', () => {
   });
 
   it.each([
-    [401, BadGatewayException],
-    [403, BadGatewayException],
-    [422, BadRequestException],
-    [429, ServiceUnavailableException],
-    [500, BadGatewayException],
-  ])(
-    'maps upstream status %s to the expected exception',
-    async (status, exceptionType) => {
-      fetchMock.mockResolvedValue(
-        providerResponse({
-          ok: false,
-          status,
-          text: () => Promise.resolve('{"error":"provider detail"}'),
-        }),
-      );
+    [401, 502],
+    [403, 502],
+    [422, 400],
+    [429, 503],
+    [500, 502],
+  ])('maps upstream status %s to HTTP %s', async (status, expectedStatus) => {
+    fetchMock.mockResolvedValue(
+      providerResponse({
+        ok: false,
+        status,
+        text: () => Promise.resolve('{"error":"provider detail"}'),
+      }),
+    );
 
-      await expectExceptionStatus(
-        () => service.getCurrencies(),
-        statusFor(exceptionType),
-      );
-    },
-  );
+    await expectExceptionStatus(() => service.getCurrencies(), expectedStatus);
+  });
 
   it('maps a non-JSON success body to 502', async () => {
     fetchMock.mockResolvedValue(
@@ -108,22 +97,7 @@ async function expectExceptionStatus(
   operation: () => Promise<unknown>,
   expectedStatus: number,
 ): Promise<void> {
-  try {
-    await operation();
-    fail('Expected operation to throw');
-  } catch (error) {
-    expect(error).toBeInstanceOf(HttpException);
-    expect((error as HttpException).getStatus()).toBe(expectedStatus);
-  }
-}
-
-function statusFor(
-  exceptionType:
-    | typeof BadGatewayException
-    | typeof BadRequestException
-    | typeof ServiceUnavailableException,
-): number {
-  if (exceptionType === BadRequestException) return 400;
-  if (exceptionType === ServiceUnavailableException) return 503;
-  return 502;
+  const rejection = operation();
+  await expect(rejection).rejects.toBeInstanceOf(HttpException);
+  await expect(rejection).rejects.toHaveProperty('status', expectedStatus);
 }

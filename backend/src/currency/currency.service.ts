@@ -88,14 +88,27 @@ export class CurrencyService {
     );
 
     // The provider returns an object keyed by code; the UI wants a sorted array.
-    const currencies = Object.values(response.data ?? {})
+    const rawCurrencies = Object.values(response.data ?? {});
+    const validCurrencies = rawCurrencies
       .filter(isRawCurrency)
       .map(({ code, name, symbol }) => ({
         code,
         name,
         symbol: typeof symbol === 'string' ? symbol : '',
-      }))
-      .sort((a, b) => a.code.localeCompare(b.code));
+      }));
+    const discardedCount = rawCurrencies.length - validCurrencies.length;
+
+    if (discardedCount > 0) {
+      this.logger.warn(
+        `Discarded ${discardedCount} malformed currency entr${
+          discardedCount === 1 ? 'y' : 'ies'
+        } from the provider response.`,
+      );
+    }
+
+    const currencies = validCurrencies.sort((a, b) =>
+      a.code.localeCompare(b.code),
+    );
 
     if (currencies.length === 0) {
       throw new BadGatewayException(
