@@ -52,6 +52,11 @@ const HISTORICAL_RATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const EARLIEST_HISTORICAL_DATE = '1999-01-01';
 
+// Callers choose the currency pair and the date, so the number of distinct
+// historical cache keys is in the millions. Cap the map and evict the oldest
+// entry first, so the cache can never be grown into a memory exhaustion.
+const MAX_CACHE_ENTRIES = 1_000;
+
 @Injectable()
 export class CurrencyService {
   private readonly logger = new Logger(CurrencyService.name);
@@ -345,7 +350,15 @@ export class CurrencyService {
   }
 
   private writeCache(key: string, value: unknown, ttlMs: number): void {
+    // Re-inserting moves the key to the end of the Map's insertion order, so
+    // the first key below is always the least recently written one.
+    this.cache.delete(key);
     this.cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+
+    for (const oldestKey of this.cache.keys()) {
+      if (this.cache.size <= MAX_CACHE_ENTRIES) break;
+      this.cache.delete(oldestKey);
+    }
   }
 }
 

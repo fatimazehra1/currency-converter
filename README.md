@@ -134,6 +134,7 @@ curl "http://localhost:3000/api/convert?from=USD&to=INR&amount=100"
 | Status | Meaning |
 |---|---|
 | `400` | Invalid input, unsupported currency, or out-of-range date |
+| `429` | Rate limit: more than 60 requests per minute from one IP |
 | `502` | Upstream provider failed or rejected our credentials |
 | `503` | Provider rate limit / monthly quota reached |
 | `504` | Provider unreachable or too slow (8s timeout) |
@@ -149,14 +150,15 @@ curl "http://localhost:3000/api/convert?from=USD&to=INR&amount=100"
 | `FREECURRENCY_API_KEY` | **yes** | Your secret key. Server will not start without it. |
 | `PORT` | no | Defaults to `3000`. Hosting platforms set this automatically. |
 | `CORS_ORIGINS` | no | Comma-separated allowed origins. Defaults to `http://localhost:5173`. |
-| `NODE_ENV` | **in production** | Set to `production` when deployed. See below. |
+| `NODE_ENV` | **yes** | `development` locally, `production` when deployed. See below. |
 
-**About CORS and `NODE_ENV`:** in development the backend accepts any
-`localhost` / `127.0.0.1` port, because Vite moves to 5174, 5175... whenever
-5173 is busy and a hard-coded port produces a confusing CORS failure. When
-`NODE_ENV=production`, that convenience is switched off completely and **only**
-the origins listed in `CORS_ORIGINS` are allowed. Always set `NODE_ENV=production`
-on your host (`render.yaml` does this for you).
+**About CORS and `NODE_ENV`:** with `NODE_ENV=development` the backend accepts
+any `localhost` / `127.0.0.1` port, because Vite moves to 5174, 5175... whenever
+5173 is busy and a hard-coded port produces a confusing CORS failure. With any
+other value — including unset — that convenience is off and **only** the origins
+listed in `CORS_ORIGINS` are allowed, so a missing setting fails closed rather
+than silently widening the allowlist. `backend/.env.example` sets
+`development`; `render.yaml` sets `production` on your host.
 
 ### Frontend (`frontend/.env`)
 
@@ -228,7 +230,18 @@ cd backend && npm run build && npm run start:prod
   leak into URLs or server logs.
 - The production frontend bundle contains no key and no reference to
   FreeCurrencyAPI — verified by scanning the built output.
-- CORS uses an explicit allowlist rather than `*`.
+- CORS uses an explicit allowlist rather than `*`, and the localhost-any-port
+  convenience is opt-in via `NODE_ENV=development` only.
+- Every request is validated against `ConvertQueryDto`; unknown query parameters
+  are rejected outright.
+- The endpoints are public, so they are rate limited to 60 requests per minute
+  per IP (`/api/health` excluded) — otherwise anyone could drain the provider
+  quota. Behind a proxy, `NODE_ENV=production` makes the limiter read the real
+  client IP from `X-Forwarded-For`.
+- `helmet` sets baseline response headers (`nosniff`, `no-referrer`, HSTS, and a
+  `default-src 'none'` CSP), and `X-Powered-By` is disabled.
+- The in-memory rate cache is capped at 1,000 entries with oldest-first
+  eviction, so requests for arbitrary dates cannot grow it without bound.
 
 ---
 
