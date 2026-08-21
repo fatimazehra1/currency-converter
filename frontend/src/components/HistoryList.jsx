@@ -1,3 +1,6 @@
+import { formatAmount, formatTimestamp } from '../utils/format';
+import { rateVariant } from '../utils/rates';
+
 /**
  * Shows past conversions loaded from localStorage.
  *
@@ -9,22 +12,6 @@
  * at 320px, whereas a stacked list reads well on a phone and still looks tidy
  * on desktop.
  */
-
-/** "2026-08-18T09:15:00.000Z" -> { date: "18/08/2026", time: "09:15" } */
-function formatTimestamp(isoString) {
-  const date = new Date(isoString);
-  return {
-    date: date.toLocaleDateString(),
-    time: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-  };
-}
-
-function formatAmount(value) {
-  return value.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
 
 export default function HistoryList({ history, onClear }) {
   return (
@@ -57,6 +44,7 @@ export default function HistoryList({ history, onClear }) {
         <ul className="list-group list-group-flush">
           {history.map((entry) => {
             const { date, time } = formatTimestamp(entry.convertedAt);
+            const variant = rateVariant(entry.historical);
 
             return (
               // entry.id is a UUID generated when the entry was created - a
@@ -75,13 +63,7 @@ export default function HistoryList({ history, onClear }) {
                   </div>
 
                   <div className="text-sm-end small">
-                    <span
-                      className={`badge ${
-                        entry.historical
-                          ? 'text-bg-warning'
-                          : 'text-bg-success'
-                      }`}
-                    >
+                    <span className={`badge text-bg-${variant}`}>
                       {entry.historical ? 'Historical' : 'Current'}
                     </span>
                     <div className="text-secondary mt-1">

@@ -1,14 +1,8 @@
 import { useState } from 'react';
 import { convertCurrency } from '../services/currencyApi';
+import { EARLIEST_RATE_DATE, yesterdayIso } from '../utils/dates';
 import CurrencySelect from './CurrencySelect';
 import ErrorAlert from './ErrorAlert';
-
-/** The newest date FreeCurrencyAPI publishes a historical rate for. */
-function yesterdayIso() {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() - 1);
-  return date.toISOString().slice(0, 10);
-}
 
 /**
  * The converter card: the form, plus the request it submits.
@@ -191,13 +185,13 @@ export default function ConverterForm({ currencies, currenciesLoading, onResult 
                 type="date"
                 className="form-control form-control-lg"
                 value={date}
-                min="1999-01-01"
+                min={EARLIEST_RATE_DATE}
                 max={maxDate}
                 disabled={isConverting}
                 onChange={(event) => setDate(event.target.value)}
               />
               <div className="form-text">
-                Rates are available from 1999-01-01 up to {maxDate}.
+                Rates are available from {EARLIEST_RATE_DATE} up to {maxDate}.
               </div>
             </div>
           )}
